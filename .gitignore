@@ -1,0 +1,17 @@
+# Java / Maven
+target/
+*.class
+*.jar
+
+# IntelliJ
+.idea/
+*.iml
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets - never commit real Mongo credentials
+application-local.yml
+application-local.properties
