@@ -4,12 +4,12 @@ Group project: Food Delivery System built with Spring Boot microservices.
 
 ## Services & Ports
 | Service | Port |
-|---|---|
+|---|------|
 | service-registry | 8761 |
 | api-gateway | 8080 |
 | user-service | 9001 |
 | restaurant-service | 9002 |
-| order-service | 9003 |
+| order-service | 9013 |
 | payment-service | 9004 |
 | delivery-service | 9005 |
 
