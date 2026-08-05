@@ -12,6 +12,7 @@ out/
 .DS_Store
 Thumbs.db
 
-# Secrets - never commit real Mongo credentials
-application-local.yml
-application-local.properties
+# Sensitive config files - never commit real credentials
+**/application.properties
+**/application-local.properties
+**/application-local.yml
