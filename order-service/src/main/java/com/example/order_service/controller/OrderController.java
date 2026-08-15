@@ -31,6 +31,8 @@ public class OrderController {
         orderEvent.put("productId", savedOrder.getProductId());
         orderEvent.put("quantity", savedOrder.getQuantity());
         orderEvent.put("price", savedOrder.getPrice());
+        // Explicit key so Payment Service never has to guess what to charge.
+        orderEvent.put("amount", savedOrder.getPrice());
 
         rabbitTemplate.convertAndSend(Constants.EXCHANGE, Constants.ROUTING_KEY, orderEvent);
 

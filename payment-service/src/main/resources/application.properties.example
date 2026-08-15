@@ -1,0 +1,9 @@
+# Template for payment-service/src/main/resources/application.properties
+# Copy this file to application.properties (which is gitignored) and fill in
+# your own Atlas credentials. Keep the database as payment_db.
+#
+# Get the full connection string from
+# Atlas -> FoodDeliveryCluster -> Connect -> Drivers -> Java.
+
+spring.mongodb.uri=mongodb+srv://<username>:<password>@fooddeliverycluster.xxxxx.mongodb.net/?appName=FoodDeliveryCluster
+spring.mongodb.database=payment_db
