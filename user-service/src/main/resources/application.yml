@@ -1,0 +1,27 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: user-service
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/customer_db}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+
+jwt:
+  secret: ${JWT_SECRET:this-is-a-development-only-secret-key-change-it-before-deploying-256bit}
+  expiration-ms: ${JWT_EXPIRATION_MS:86400000}   # 24 hours
+
+logging:
+  level:
+    com.fooddelivery.userservice: DEBUG
+    org.springframework.data.mongodb.core.MongoTemplate: INFO
