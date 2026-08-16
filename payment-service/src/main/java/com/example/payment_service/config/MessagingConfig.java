@@ -54,6 +54,23 @@ public class MessagingConfig {
         return BindingBuilder.bind(paymentQueue).to(paymentExchange).with(Constants.PAYMENT_ROUTING_KEY);
     }
 
+    // ----- Inbound: Order Service -> Payment Service (refund requests) -----
+
+    @Bean
+    public Queue refundQueue() {
+        return new Queue(Constants.REFUND_QUEUE, true);
+    }
+
+    @Bean
+    public TopicExchange refundExchange() {
+        return new TopicExchange(Constants.REFUND_EXCHANGE);
+    }
+
+    @Bean
+    public Binding refundBinding(Queue refundQueue, TopicExchange refundExchange) {
+        return BindingBuilder.bind(refundQueue).to(refundExchange).with(Constants.REFUND_ROUTING_KEY);
+    }
+
     // ----- Shared -----
 
     @Bean

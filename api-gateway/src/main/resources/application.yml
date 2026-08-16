@@ -7,6 +7,17 @@ spring:
     gateway:
       server:
         webflux:
+          # Browsers block cross-origin calls from the frontend without this.
+          # Postman is unaffected by CORS, so this only matters once a browser
+          # is involved. allowedOriginPatterns (not allowedOrigins) is required
+          # so pages opened directly from disk (Origin: null) also work.
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedMethods: "*"
+                allowedHeaders: "*"
+                exposedHeaders: "*"
           routes:
             - id: order-service
               uri: lb://ORDER-SERVICE
@@ -20,6 +31,14 @@ spring:
               uri: lb://PAYMENT-SERVICE
               predicates:
                 - Path=/payments/**
+            - id: user-service
+              uri: lb://USER-SERVICE
+              predicates:
+                - Path=/api/users/**
+            - id: delivery-service
+              uri: lb://DELIVERY-SERVICE
+              predicates:
+                - Path=/api/deliveries/**,/api/riders/**
 eureka:
   client:
     register-with-eureka: true

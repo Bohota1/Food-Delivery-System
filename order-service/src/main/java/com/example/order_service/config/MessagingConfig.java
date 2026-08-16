@@ -49,6 +49,57 @@ public class MessagingConfig {
         return BindingBuilder.bind(paymentQueue).to(paymentExchange).with(Constants.PAYMENT_ROUTING_KEY);
     }
 
+    // ----- Outbound: Order Service -> Delivery Service -----
+    // Delivery Service declares these same three too. Declaring them here as well
+    // means the queue exists even if Delivery Service has not started yet, so
+    // confirmed-order events are buffered instead of dropped.
+
+    @Bean
+    public Queue orderConfirmedQueue() {
+        return new Queue(Constants.ORDER_CONFIRMED_QUEUE, true);
+    }
+
+    @Bean
+    public TopicExchange orderConfirmedExchange() {
+        return new TopicExchange(Constants.ORDER_CONFIRMED_EXCHANGE);
+    }
+
+    @Bean
+    public Binding orderConfirmedBinding(Queue orderConfirmedQueue, TopicExchange orderConfirmedExchange) {
+        return BindingBuilder.bind(orderConfirmedQueue).to(orderConfirmedExchange)
+                .with(Constants.ORDER_CONFIRMED_ROUTING_KEY);
+    }
+
+    // ----- Outbound: Order Service -> Delivery Service (cancellations) -----
+
+    @Bean
+    public Queue orderCancelledQueue() {
+        return new Queue(Constants.ORDER_CANCELLED_QUEUE, true);
+    }
+
+    @Bean
+    public Binding orderCancelledBinding(Queue orderCancelledQueue, TopicExchange orderConfirmedExchange) {
+        return BindingBuilder.bind(orderCancelledQueue).to(orderConfirmedExchange)
+                .with(Constants.ORDER_CANCELLED_ROUTING_KEY);
+    }
+
+    // ----- Outbound: Order Service -> Payment Service (refunds) -----
+
+    @Bean
+    public Queue refundQueue() {
+        return new Queue(Constants.REFUND_QUEUE, true);
+    }
+
+    @Bean
+    public TopicExchange refundExchange() {
+        return new TopicExchange(Constants.REFUND_EXCHANGE);
+    }
+
+    @Bean
+    public Binding refundBinding(Queue refundQueue, TopicExchange refundExchange) {
+        return BindingBuilder.bind(refundQueue).to(refundExchange).with(Constants.REFUND_ROUTING_KEY);
+    }
+
     // ----- Shared -----
 
     @Bean

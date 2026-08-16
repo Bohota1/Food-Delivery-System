@@ -5,7 +5,9 @@ import com.example.payment_service.entity.Payment;
 import com.example.payment_service.repository.PaymentRepository;
 import com.example.payment_service.service.PaymentGateway.GatewayResult;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -58,6 +60,44 @@ public class PaymentService {
         payment.setProcessedAt(Instant.now());
 
         return paymentRepository.save(payment);
+    }
+
+    /**
+     * Refunds a successful payment - the "Request Refund" use case.
+     *
+     * <p>Only a SUCCESS payment can be refunded. Refunding one that is already REFUNDED is
+     * treated as a no-op rather than an error, so a redelivered refund message is harmless.
+     */
+    public Payment refundPayment(Payment payment, String reason) {
+        if (Constants.REFUNDED.equals(payment.getStatus())) {
+            System.out.println("Payment " + payment.getId() + " is already refunded, skipping.");
+            return payment;
+        }
+        if (!Constants.SUCCESS.equals(payment.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Only a successful payment can be refunded (current status: " + payment.getStatus() + ")");
+        }
+
+        payment.setStatus(Constants.REFUNDED);
+        payment.setRefundReason((reason == null || reason.isBlank()) ? "Refund requested by customer" : reason);
+        payment.setRefundedAt(Instant.now());
+        return paymentRepository.save(payment);
+    }
+
+    public Payment requireById(String id) {
+        Payment payment = paymentRepository.findPaymentById(id);
+        if (payment == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Payment not found: " + id);
+        }
+        return payment;
+    }
+
+    public Payment requireByOrderId(String orderId) {
+        Payment payment = paymentRepository.findPaymentByOrderId(orderId);
+        if (payment == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No payment for order: " + orderId);
+        }
+        return payment;
     }
 
     public Payment findPaymentById(String id) {

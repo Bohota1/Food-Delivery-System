@@ -5,6 +5,9 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Document(collection = "orders")
 @Data
 @AllArgsConstructor
@@ -28,12 +31,31 @@ public class Order {
     @Field
     private double price;
 
+    // The customer's cart. `price` above stays the order TOTAL, which is what
+    // Payment Service charges, so single-item orders placed the old way still work.
     @Field
-    private String status; // PENDING_PAYMENT, CONFIRMED, PAYMENT_FAILED, DELIVERED
+    private List<OrderItem> items = new ArrayList<>();
+
+    @Field
+    private String restaurantName;
+
+    @Field
+    private String status; // PENDING_PAYMENT, CONFIRMED, PAYMENT_FAILED, CANCELLED, DELIVERED
+
+    @Field
+    private String cancelReason;
 
     @Field
     private String paymentId;
 
     @Field
     private String paymentStatus; // PENDING, SUCCESS, FAILED
+
+    // Needed by Delivery Service when the order is confirmed. Supplied by the
+    // customer on the original order request.
+    @Field
+    private String deliveryAddress;
+
+    @Field
+    private String pickupAddress;
 }

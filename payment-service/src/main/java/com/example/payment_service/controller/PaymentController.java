@@ -48,6 +48,32 @@ public class PaymentController {
         return payment;
     }
 
+    /**
+     * "Request Refund" - the customer asks for their money back on a payment.
+     * Order Service is told over RabbitMQ so the order reflects the refund.
+     */
+    @PostMapping("/{id}/refund")
+    public Payment refundPayment(@PathVariable("id") String paymentId,
+                                 @RequestBody(required = false) RefundRequest request) {
+        Payment payment = paymentService.requireById(paymentId);
+        Payment refunded = paymentService.refundPayment(payment, request == null ? null : request.reason());
+        paymentEventPublisher.publishPaymentResult(refunded);
+        return refunded;
+    }
+
+    /** Same refund, addressed by order instead of payment id - what the website uses. */
+    @PostMapping("/order/{orderId}/refund")
+    public Payment refundByOrder(@PathVariable("orderId") String orderId,
+                                 @RequestBody(required = false) RefundRequest request) {
+        Payment payment = paymentService.requireByOrderId(orderId);
+        Payment refunded = paymentService.refundPayment(payment, request == null ? null : request.reason());
+        paymentEventPublisher.publishPaymentResult(refunded);
+        return refunded;
+    }
+
     public record PaymentRequest(String orderId, String customerId, double amount) {
+    }
+
+    public record RefundRequest(String reason) {
     }
 }

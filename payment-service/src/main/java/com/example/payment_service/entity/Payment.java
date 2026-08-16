@@ -37,6 +37,10 @@ public class Payment {
     private String failureReason;
 
     @Field
+    private String refundReason;
+
+    private Instant refundedAt;
+
     private Instant createdAt;
 
     @Field

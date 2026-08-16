@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Food Delivery System — Service Console</title>
+<style>
+  :root{
+    --paper:#EFEBE0;
+    --panel:#FBFAF5;
+    --panel-2:#F5F2E9;
+    --ink:#17150E;
+    --ink-soft:#5C5648;
+    --ink-faint:#8A8375;
+    --rule:#D6D0C0;
+    --rule-strong:#B9B2A0;
+    --accent:#A4432A;
+    --accent-soft:#F0DED6;
+    --ok:#3B6B4C;
+    --ok-soft:#DFEADF;
+    --warn:#8A6A1F;
+    --err:#98322A;
+    --err-soft:#F3DDD9;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:"Helvetica Neue",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:13px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:var(--mono)}
+  .micro{
+    font-family:var(--mono); font-size:10px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-faint);
+  }
+
+  /* ---------- masthead ---------- */
+  header{
+    border-bottom:2px solid var(--ink);
+    background:var(--panel);
+    padding:14px 20px 12px;
+    display:flex; align-items:flex-end; gap:24px; flex-wrap:wrap;
+  }
+  .brand h1{
+    margin:0; font-size:19px; letter-spacing:-.02em; font-weight:700;
+  }
+  .brand .sub{margin-top:2px}
+  .spacer{flex:1}
+
+  .modes{display:flex; border:1px solid var(--rule-strong); background:var(--panel-2)}
+  .modes button{
+    font-family:var(--mono); font-size:11px; letter-spacing:.04em;
+    padding:6px 12px; border:0; background:transparent; color:var(--ink-soft);
+    cursor:pointer; border-right:1px solid var(--rule);
+  }
+  .modes button:last-child{border-right:0}
+  .modes button[aria-pressed="true"]{background:var(--ink); color:var(--paper)}
+
+  /* ---------- health strip ---------- */
+  .health{display:flex; gap:0; border:1px solid var(--rule-strong); background:var(--panel-2)}
+  .h-cell{
+    padding:5px 10px; border-right:1px solid var(--rule);
+    display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10.5px;
+  }
+  .h-cell:last-child{border-right:0}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--rule-strong);flex:none}
+  .dot.up{background:var(--ok)} .dot.down{background:var(--err)}
+
+  /* ---------- layout ---------- */
+  main{display:grid; grid-template-columns:236px minmax(0,1fr) 260px; height:calc(100% - 64px)}
+  @media(max-width:1100px){ main{grid-template-columns:1fr; height:auto} }
+
+  .rail{border-right:1px solid var(--rule); background:var(--panel-2); overflow-y:auto}
+  .rail-head{padding:11px 14px 7px; border-bottom:1px solid var(--rule)}
+  .svc{border-bottom:1px solid var(--rule)}
+  .svc > .svc-name{
+    padding:8px 14px; font-family:var(--mono); font-size:11px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--ink); background:var(--panel);
+    display:flex; align-items:center; gap:7px;
+  }
+  .svc-port{margin-left:auto; color:var(--ink-faint); font-size:10px}
+  .ep{
+    display:flex; gap:7px; align-items:baseline; width:100%; text-align:left;
+    padding:5px 14px 5px 14px; border:0; background:transparent; cursor:pointer;
+    font-family:var(--mono); font-size:11px; color:var(--ink-soft);
+    border-left:3px solid transparent;
+  }
+  .ep:hover{background:var(--panel)}
+  .ep[aria-selected="true"]{background:var(--panel); border-left-color:var(--accent); color:var(--ink)}
+  .verb{font-size:9.5px; letter-spacing:.05em; width:44px; flex:none; color:var(--ink-faint)}
+  .verb.POST{color:var(--accent)} .verb.PUT,.verb.PATCH{color:var(--warn)} .verb.DELETE{color:var(--err)}
+
+  .stage{overflow-y:auto; padding:18px 20px 40px; min-width:0}
+  .panel{background:var(--panel); border:1px solid var(--rule); margin-bottom:16px}
+  .panel-head{
+    padding:8px 12px; border-bottom:1px solid var(--rule); display:flex;
+    align-items:center; gap:10px; background:var(--panel-2);
+  }
+  .panel-body{padding:12px}
+
+  .url-row{display:flex; gap:8px; align-items:stretch; margin-bottom:10px}
+  .verb-tag{
+    font-family:var(--mono); font-size:11px; padding:7px 10px; border:1px solid var(--ink);
+    background:var(--ink); color:var(--paper); letter-spacing:.06em; flex:none;
+  }
+  input[type=text], textarea{
+    font-family:var(--mono); font-size:12px; color:var(--ink);
+    background:var(--panel-2); border:1px solid var(--rule-strong);
+    padding:7px 9px; width:100%; border-radius:0;
+  }
+  input[type=text]:focus, textarea:focus{outline:2px solid var(--accent); outline-offset:-2px}
+  textarea{min-height:130px; resize:vertical; line-height:1.55}
+
+  button.act{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+    padding:8px 16px; border:1px solid var(--ink); background:var(--ink); color:var(--paper);
+    cursor:pointer;
+  }
+  button.act:hover{background:var(--accent); border-color:var(--accent)}
+  button.act:disabled{background:var(--rule-strong); border-color:var(--rule-strong); cursor:default}
+  button.ghost{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; text-transform:uppercase;
+    padding:5px 10px; border:1px solid var(--rule-strong); background:transparent;
+    color:var(--ink-soft); cursor:pointer;
+  }
+  button.ghost:hover{border-color:var(--ink); color:var(--ink)}
+
+  .desc{color:var(--ink-soft); font-size:12px; margin:0 0 10px; max-width:70ch}
+
+  /* ---------- response ---------- */
+  .status-line{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .code{
+    font-family:var(--mono); font-size:11px; padding:2px 8px; border:1px solid currentColor;
+  }
+  .code.ok{color:var(--ok); background:var(--ok-soft)}
+  .code.err{color:var(--err); background:var(--err-soft)}
+  pre{
+    margin:0; font-family:var(--mono); font-size:11.5px; line-height:1.6;
+    white-space:pre-wrap; word-break:break-word; max-height:420px; overflow:auto;
+    background:var(--panel-2); border:1px solid var(--rule); padding:11px;
+  }
+  .k{color:var(--accent)} .s{color:var(--ok)} .n{color:#7A4A9E} .b{color:var(--warn)} .nl{color:var(--ink-faint)}
+
+  /* ---------- vars ---------- */
+  .vars{border-left:1px solid var(--rule); background:var(--panel-2); overflow-y:auto}
+  .var-row{padding:7px 12px; border-bottom:1px solid var(--rule)}
+  .var-row label{display:block; margin-bottom:3px}
+  .var-row input{font-size:11px; padding:5px 7px}
+
+  /* ---------- workflow ---------- */
+  .steps{list-style:none; margin:0; padding:0}
+  .step{
+    display:grid; grid-template-columns:22px 1fr auto; gap:10px; align-items:baseline;
+    padding:7px 0; border-bottom:1px dotted var(--rule);
+  }
+  .step:last-child{border-bottom:0}
+  .step .idx{font-family:var(--mono); font-size:10px; color:var(--ink-faint)}
+  .step .label{font-size:12px}
+  .step .label small{display:block; color:var(--ink-faint); font-family:var(--mono); font-size:10.5px; margin-top:1px}
+  .step .state{font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase}
+  .step[data-state=run] .state{color:var(--warn)}
+  .step[data-state=ok] .state{color:var(--ok)}
+  .step[data-state=fail] .state{color:var(--err)}
+  .step[data-state=wait] .state{color:var(--ink-faint)}
+  .step[data-state=ok] .idx::after{content:"●"; color:var(--ok)}
+  .step[data-state=fail] .idx::after{content:"✕"; color:var(--err)}
+
+  .banner{
+    border:1px solid var(--rule-strong); background:var(--accent-soft);
+    padding:9px 12px; margin-bottom:16px; font-size:12px; color:#6E2E1C;
+  }
+  .banner code{font-family:var(--mono); font-size:11px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1>Food Delivery System</h1>
+    <div class="sub micro">Microservice API Console</div>
+  </div>
+
+  <div>
+    <div class="micro" style="margin-bottom:4px">Target</div>
+    <div class="modes" id="modes">
+      <button data-mode="gateway" aria-pressed="true">Gateway :8080</button>
+      <button data-mode="direct" aria-pressed="false">Direct ports</button>
+    </div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div>
+    <div class="micro" style="margin-bottom:4px">Service health
+      <button class="ghost" id="ping" style="margin-left:6px;padding:1px 6px">Ping</button>
+    </div>
+    <div class="health" id="health"></div>
+  </div>
+</header>
+
+<main>
+  <!-- ------------ endpoint index ------------ -->
+  <nav class="rail">
+    <div class="rail-head">
+      <div class="micro">Index</div>
+    </div>
+    <div class="svc">
+      <div class="svc-name" style="cursor:pointer" id="wf-open">
+        ▶ Workflow runner
+      </div>
+    </div>
+    <div id="rail-list"></div>
+  </nav>
+
+  <!-- ------------ stage ------------ -->
+  <section class="stage">
+
+    <!-- workflow -->
+    <div class="panel" id="wf-panel">
+      <div class="panel-head">
+        <span class="micro">Demo</span>
+        <strong style="font-size:13px">End-to-end workflow</strong>
+        <div class="spacer"></div>
+        <button class="act" id="wf-run">Run workflow</button>
+      </div>
+      <div class="panel-body">
+        <p class="desc">
+          Drives the whole system in one pass: creates a restaurant and menu item, registers a
+          customer, places an order, then <em>waits</em> while RabbitMQ carries it through Payment
+          and back, and on to Delivery. The waiting steps are the asynchronous ones — nothing polls
+          the services on your behalf in the real system, they react to events.
+        </p>
+        <ol class="steps" id="wf-steps"></ol>
+      </div>
+    </div>
+
+    <!-- request -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="micro">Request</span>
+        <strong id="ep-title" style="font-size:13px">Select an endpoint</strong>
+      </div>
+      <div class="panel-body">
+        <p class="desc" id="ep-desc">Pick one from the index on the left.</p>
+        <div class="url-row">
+          <span class="verb-tag" id="ep-verb">GET</span>
+          <input type="text" id="ep-path" spellcheck="false" placeholder="/restaurants/">
+          <button class="act" id="send">Send</button>
+        </div>
+        <div id="body-wrap">
+          <div class="micro" style="margin-bottom:5px">Request body — JSON</div>
+          <textarea id="ep-body" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- response -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="micro">Response</span>
+        <div class="status-line" id="resp-status"><span class="micro">awaiting request</span></div>
+      </div>
+      <div class="panel-body">
+        <pre id="resp-body">—</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------ variables ------------ -->
+  <aside class="vars">
+    <div class="rail-head" style="display:flex;align-items:center">
+      <span class="micro">Variables</span>
+      <button class="ghost" id="clear-vars" style="margin-left:auto;padding:2px 7px">Clear</button>
+    </div>
+    <div id="var-list"></div>
+    <div style="padding:11px 12px">
+      <p class="desc" style="font-size:11px;margin:0">
+        Captured automatically from responses. Reference them anywhere as
+        <span class="mono">{{orderId}}</span> — in the path or the body.
+      </p>
+    </div>
+  </aside>
+</main>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================ config ============================ */
+
+const PORTS = {
+  user:8081, restaurant:9002, order:9013, payment:9004, delivery:8083
+};
+let mode = "gateway";
+const base = svc => mode === "gateway" ? "http://localhost:8080" : "http://localhost:" + PORTS[svc];
+
+const vars = {
+  restaurantId:"", menuItemId:"", orderId:"", paymentId:"",
+  deliveryId:"", riderId:"", userId:"", token:""
+};
+
+/* ============================ catalogue ============================ */
+/* capture: maps a variable name -> path in the response body           */
+
+const SERVICES = [
+  { key:"user", name:"User Service", port:8081, endpoints:[
+    { m:"POST", p:"/api/users/register", d:"Register a customer account.",
+      body:{fullName:"Ayesha Karim", email:"ayesha@example.com", password:"Passw0rd!", phone:"01711111111"},
+      capture:{userId:"id"} },
+    { m:"POST", p:"/api/users/login", d:"Authenticate and receive a JWT.",
+      body:{email:"ayesha@example.com", password:"Passw0rd!"}, capture:{token:"token"} },
+    { m:"GET",  p:"/api/users/profile", d:"Current profile. Requires the JWT from login.", auth:true },
+    { m:"PUT",  p:"/api/users/profile", d:"Update name and phone.", auth:true,
+      body:{fullName:"Ayesha K. Rahman", phone:"01722222222"} },
+    { m:"GET",  p:"/api/users/addresses", d:"List saved delivery addresses.", auth:true },
+    { m:"POST", p:"/api/users/addresses", d:"Add a delivery address.", auth:true,
+      body:{label:"Home", street:"House 12, Road 5", city:"Dhaka", state:"Dhaka",
+            zipCode:"1209", country:"Bangladesh", isDefault:true} },
+    { m:"GET",  p:"/api/users/internal/{{userId}}", d:"Internal lookup used by other services." }
+  ]},
+
+  { key:"restaurant", name:"Restaurant Service", port:9002, endpoints:[
+    { m:"POST", p:"/restaurants/", d:"Register a restaurant.",
+      body:{name:"Kacchi Bhai", address:"Dhanmondi, Dhaka", cuisineType:"Bangladeshi",
+            phone:"01712345678", available:true}, capture:{restaurantId:"id"} },
+    { m:"GET",  p:"/restaurants/", d:"All restaurants." },
+    { m:"GET",  p:"/restaurants/available", d:"Only restaurants currently open — the customer browse view." },
+    { m:"GET",  p:"/restaurants/search?cuisineType=Bangladeshi", d:"Filter by cuisine, case-insensitive." },
+    { m:"GET",  p:"/restaurants/{{restaurantId}}", d:"One restaurant with its embedded menu." },
+    { m:"PUT",  p:"/restaurants/{{restaurantId}}", d:"Update profile fields.",
+      body:{name:"Kacchi Bhai — Banani", address:"Banani, Dhaka",
+            cuisineType:"Bangladeshi", phone:"01799999999"} },
+    { m:"PATCH",p:"/restaurants/{{restaurantId}}/availability?available=false",
+      d:"Open or close. Publishes an event to restaurant_exchange." },
+    { m:"POST", p:"/restaurants/{{restaurantId}}/menu", d:"Add a menu item. The service assigns it a UUID.",
+      body:{name:"Mutton Kacchi", description:"Traditional mutton kacchi biryani",
+            category:"Main Course", price:350, available:true}, capture:{menuItemId:"id"} },
+    { m:"GET",  p:"/restaurants/{{restaurantId}}/menu", d:"Menu for one restaurant." },
+    { m:"PUT",  p:"/restaurants/{{restaurantId}}/menu/{{menuItemId}}", d:"Edit a menu item.",
+      body:{name:"Mutton Kacchi (Full)", description:"Full plate",
+            category:"Main Course", price:450} },
+    { m:"PATCH",p:"/restaurants/{{restaurantId}}/menu/{{menuItemId}}/availability?available=false",
+      d:"Mark an item out of stock." },
+    { m:"DELETE",p:"/restaurants/{{restaurantId}}/menu/{{menuItemId}}", d:"Remove a menu item." },
+    { m:"DELETE",p:"/restaurants/{{restaurantId}}", d:"Remove the restaurant." }
+  ]},
+
+  { key:"order", name:"Order Service", port:9013, endpoints:[
+    { m:"POST", p:"/orders/",
+      d:"Place an order. Returns immediately as PENDING_PAYMENT and publishes to order_exchange — payment happens asynchronously.",
+      body:{customerId:"cust-101", restaurantId:"{{restaurantId}}", productId:"prod-9",
+            quantity:2, price:750.0,
+            deliveryAddress:"House 12, Road 5, Dhanmondi, Dhaka",
+            pickupAddress:"Kacchi Bhai, Banani, Dhaka"}, capture:{orderId:"id"} },
+    { m:"GET",  p:"/orders/{{orderId}}", d:"Track one order. Re-send to watch it move to CONFIRMED." },
+    { m:"GET",  p:"/orders/", d:"All orders." }
+  ]},
+
+  { key:"payment", name:"Payment Service", port:9004, endpoints:[
+    { m:"GET",  p:"/payments/order/{{orderId}}", d:"Payment for a given order — created by the async listener." },
+    { m:"GET",  p:"/payments/", d:"All payment records." },
+    { m:"GET",  p:"/payments/{{paymentId}}", d:"One payment by id." },
+    { m:"POST", p:"/payments/", d:"Manual payment record. The normal path is via RabbitMQ, not this.",
+      body:{orderId:"{{orderId}}", customerId:"cust-101", amount:750.0, method:"CARD"},
+      capture:{paymentId:"id"} }
+  ]},
+
+  { key:"delivery", name:"Delivery Service", port:8083, endpoints:[
+    { m:"POST", p:"/api/riders", d:"Register a delivery rider.",
+      body:{name:"Karim Rahman", phone:"01799999999", vehicleType:"MOTORCYCLE"},
+      capture:{riderId:"id"} },
+    { m:"GET",  p:"/api/riders", d:"All riders." },
+    { m:"GET",  p:"/api/riders/available", d:"Riders free to take a delivery." },
+    { m:"GET",  p:"/api/deliveries/order/{{orderId}}", d:"Delivery for an order — created automatically on order.confirmed.",
+      capture:{deliveryId:"id"} },
+    { m:"POST", p:"/api/deliveries/{{deliveryId}}/assign", d:"Assign a rider.",
+      body:{riderId:"{{riderId}}"} },
+    { m:"PUT",  p:"/api/deliveries/{{deliveryId}}/status", d:"Advance status: ASSIGNED → PICKED_UP → DELIVERED.",
+      body:{status:"PICKED_UP"} },
+    { m:"GET",  p:"/api/deliveries/{{deliveryId}}", d:"One delivery record." },
+    { m:"GET",  p:"/api/deliveries/rider/{{riderId}}", d:"Deliveries for one rider." }
+  ]}
+];
+
+/* ============================ helpers ============================ */
+
+const $ = s => document.querySelector(s);
+const el = (t,c,x) => { const e=document.createElement(t); if(c)e.className=c; if(x!=null)e.textContent=x; return e; };
+const interp = s => String(s).replace(/\{\{(\w+)\}\}/g, (m,k) => vars[k] || m);
+const svcOf = ep => SERVICES.find(s => s.endpoints.includes(ep));
+
+function dig(obj, path){
+  return path.split(".").reduce((o,k) => (o==null ? o : o[k]), obj);
+}
+
+function highlight(json){
+  return json
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+    .replace(/: ?"([^"]*)"/g, ': <span class="s">"$1"</span>')
+    .replace(/: ?(-?\d+\.?\d*)/g, ': <span class="n">$1</span>')
+    .replace(/: ?(true|false)/g, ': <span class="b">$1</span>')
+    .replace(/: ?null/g, ': <span class="nl">null</span>');
+}
+
+/* ============================ request core ============================ */
+
+async function call(svcKey, method, path, bodyObj, useAuth){
+  const url = base(svcKey) + interp(path);
+  const opts = { method, headers:{} };
+  if(bodyObj !== undefined && method !== "GET" && method !== "DELETE"){
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = typeof bodyObj === "string" ? interp(bodyObj) : JSON.stringify(bodyObj);
+  }
+  if(useAuth && vars.token) opts.headers["Authorization"] = "Bearer " + vars.token;
+
+  const t0 = performance.now();
+  const res = await fetch(url, opts);
+  const ms  = Math.round(performance.now() - t0);
+  const txt = await res.text();
+  let data = null;
+  try { data = txt ? JSON.parse(txt) : null; } catch(_){ }
+  return { ok:res.ok, status:res.status, ms, text:txt, data, url };
+}
+
+function applyCapture(ep, data){
+  if(!ep.capture || !data) return [];
+  const hit = [];
+  for(const [name, path] of Object.entries(ep.capture)){
+    const v = dig(data, path);
+    if(v != null && v !== ""){ vars[name] = String(v); hit.push(name); }
+  }
+  if(hit.length) renderVars();
+  return hit;
+}
+
+/* ============================ UI: index ============================ */
+
+let current = null;
+
+function renderRail(){
+  const host = $("#rail-list"); host.innerHTML = "";
+  SERVICES.forEach(svc => {
+    const box = el("div","svc");
+    const head = el("div","svc-name");
+    head.appendChild(document.createTextNode(svc.name));
+    const port = el("span","svc-port",":"+svc.port);
+    head.appendChild(port);
+    box.appendChild(head);
+    svc.endpoints.forEach(ep => {
+      const b = el("button","ep");
+      b.setAttribute("aria-selected","false");
+      b.appendChild(el("span","verb "+ep.m, ep.m));
+      b.appendChild(el("span",null, ep.p.replace(/\{\{(\w+)\}\}/g,"{$1}").split("?")[0]));
+      b.onclick = () => select(ep,b);
+      ep._btn = b;
+      box.appendChild(b);
+    });
+    host.appendChild(box);
+  });
+}
+
+function select(ep, btn){
+  document.querySelectorAll(".ep").forEach(x => x.setAttribute("aria-selected","false"));
+  btn.setAttribute("aria-selected","true");
+  current = ep;
+  $("#ep-title").textContent = svcOf(ep).name;
+  $("#ep-desc").textContent  = ep.d + (ep.auth ? "  ·  Sends the stored JWT." : "");
+  $("#ep-verb").textContent  = ep.m;
+  $("#ep-path").value        = ep.p;
+  const hasBody = ep.body !== undefined;
+  $("#body-wrap").style.display = hasBody ? "" : "none";
+  if(hasBody) $("#ep-body").value = JSON.stringify(ep.body, null, 2);
+}
+
+/* ============================ UI: vars ============================ */
+
+function renderVars(){
+  const host = $("#var-list"); host.innerHTML = "";
+  Object.keys(vars).forEach(k => {
+    const row = el("div","var-row");
+    const lab = el("label"); lab.className="micro"; lab.textContent = k;
+    const inp = document.createElement("input");
+    inp.type="text"; inp.value = vars[k];
+    inp.placeholder = k === "token" ? "set by login" : "empty";
+    inp.oninput = e => { vars[k] = e.target.value; };
+    row.appendChild(lab); row.appendChild(inp); host.appendChild(row);
+  });
+}
+
+/* ============================ UI: response ============================ */
+
+function showResponse(r, note){
+  const s = $("#resp-status"); s.innerHTML = "";
+  const code = el("span","code "+(r.ok?"ok":"err"), r.status + (r.ok?" OK":" ERROR"));
+  s.appendChild(code);
+  s.appendChild(el("span","micro", r.ms + " ms"));
+  s.appendChild(el("span","micro", r.url.replace(/^https?:\/\//,"")));
+  if(note) s.appendChild(el("span","micro","captured: "+note));
+  const pretty = r.data ? JSON.stringify(r.data, null, 2) : (r.text || "(empty body)");
+  $("#resp-body").innerHTML = r.data ? highlight(pretty) : pretty;
+}
+
+function showError(e){
+  const s = $("#resp-status"); s.innerHTML = "";
+  s.appendChild(el("span","code err","NETWORK"));
+  s.appendChild(el("span","micro","request never reached the service"));
+  $("#resp-body").textContent =
+    e.message + "\n\nLikely causes:\n" +
+    "  • the service (or the gateway) is not running\n" +
+    "  • CORS is not enabled on the API gateway\n" +
+    "  • wrong target mode — try switching Gateway / Direct ports";
+}
+
+$("#send").onclick = async () => {
+  if(!current) return;
+  const btn = $("#send"); btn.disabled = true; btn.textContent = "…";
+  try{
+    let body;
+    if(current.body !== undefined){
+      const raw = $("#ep-body").value.trim();
+      body = raw ? raw : undefined;               // sent as-is, interpolated later
+    }
+    const r = await call(svcOf(current).key, current.m, $("#ep-path").value, body, current.auth);
+    const hit = applyCapture(current, r.data);
+    showResponse(r, hit.join(", "));
+  }catch(e){ showError(e); }
+  finally{ btn.disabled = false; btn.textContent = "Send"; }
+};
+
+/* ============================ health ============================ */
+
+const PROBES = [
+  { key:"user",       label:"user",       path:"/api/users/internal/health-probe", okAny:true },
+  { key:"restaurant", label:"restaurant", path:"/restaurants/" },
+  { key:"order",      label:"order",      path:"/orders/" },
+  { key:"payment",    label:"payment",    path:"/payments/" },
+  { key:"delivery",   label:"delivery",   path:"/api/riders" }
+];
+
+function renderHealth(states){
+  const host = $("#health"); host.innerHTML = "";
+  PROBES.forEach(p => {
+    const c = el("div","h-cell");
+    const d = el("span","dot"); if(states[p.key]) d.classList.add(states[p.key]);
+    c.appendChild(d); c.appendChild(document.createTextNode(p.label));
+    host.appendChild(c);
+  });
+}
+
+async function ping(){
+  const states = {};
+  renderHealth(states);
+  await Promise.all(PROBES.map(async p => {
+    try{
+      const r = await call(p.key, "GET", p.path);
+      // any HTTP answer means the service is reachable; 404 on a probe path is fine
+      states[p.key] = (r.status > 0) ? "up" : "down";
+    }catch(_){ states[p.key] = "down"; }
+    renderHealth(states);
+  }));
+}
+$("#ping").onclick = ping;
+
+/* ============================ mode switch ============================ */
+
+$("#modes").addEventListener("click", e => {
+  const b = e.target.closest("button[data-mode]"); if(!b) return;
+  mode = b.dataset.mode;
+  document.querySelectorAll("#modes button").forEach(x =>
+    x.setAttribute("aria-pressed", String(x === b)));
+  ping();
+});
+
+/* ============================ workflow ============================ */
+
+const WF = [
+  { label:"Create restaurant", hint:"POST /restaurants/", run: async () => {
+      const r = await call("restaurant","POST","/restaurants/",
+        {name:"Kacchi Bhai", address:"Banani, Dhaka", cuisineType:"Bangladeshi",
+         phone:"01712345678", available:true});
+      if(!r.ok) throw new Error("status "+r.status);
+      vars.restaurantId = r.data.id; renderVars();
+      return "id " + r.data.id;
+  }},
+  { label:"Add a menu item", hint:"POST /restaurants/{id}/menu", run: async () => {
+      const r = await call("restaurant","POST","/restaurants/{{restaurantId}}/menu",
+        {name:"Mutton Kacchi", description:"Full plate", category:"Main Course",
+         price:750, available:true});
+      if(!r.ok) throw new Error("status "+r.status);
+      vars.menuItemId = r.data.id; renderVars();
+      return r.data.name;
+  }},
+  { label:"Register a customer", hint:"POST /api/users/register", run: async () => {
+      const email = "demo" + Date.now() + "@iut.test";
+      const r = await call("user","POST","/api/users/register",
+        {fullName:"Ayesha Karim", email, password:"Passw0rd!", phone:"01711111111"});
+      if(!r.ok) throw new Error("status "+r.status);
+      vars.userId = r.data.id; renderVars();
+      return email;
+  }},
+  { label:"Place the order", hint:"POST /orders/  →  order_exchange", run: async () => {
+      const r = await call("order","POST","/orders/",
+        {customerId: vars.userId || "cust-101", restaurantId: vars.restaurantId,
+         productId:"prod-9", quantity:2, price:750.0,
+         deliveryAddress:"House 12, Road 5, Dhanmondi, Dhaka",
+         pickupAddress:"Kacchi Bhai, Banani, Dhaka"});
+      if(!r.ok) throw new Error("status "+r.status);
+      vars.orderId = r.data.id; renderVars();
+      return "status " + r.data.status;
+  }},
+  { label:"Payment processed", hint:"async · Payment consumes order_queue", async:true, run: async () => {
+      const r = await poll(() => call("payment","GET","/payments/order/{{orderId}}"),
+                           x => x.ok && x.data && x.data.status);
+      vars.paymentId = r.data.id; renderVars();
+      return r.data.status + " · " + r.data.transactionId;
+  }},
+  { label:"Order confirmed", hint:"async · Order consumes payment_queue", async:true, run: async () => {
+      const r = await poll(() => call("order","GET","/orders/{{orderId}}"),
+                           x => x.ok && x.data && x.data.status === "CONFIRMED");
+      return "status " + r.data.status;
+  }},
+  { label:"Delivery created", hint:"async · Delivery consumes order.confirmed.queue", async:true, run: async () => {
+      const r = await poll(() => call("delivery","GET","/api/deliveries/order/{{orderId}}"),
+                           x => x.ok && x.data && x.data.id);
+      vars.deliveryId = r.data.id; renderVars();
+      return "status " + r.data.status;
+  }},
+  { label:"Register a rider", hint:"POST /api/riders", run: async () => {
+      const r = await call("delivery","POST","/api/riders",
+        {name:"Karim Rahman", phone:"01799999999", vehicleType:"MOTORCYCLE"});
+      if(!r.ok) throw new Error("status "+r.status);
+      vars.riderId = r.data.id; renderVars();
+      return r.data.name;
+  }},
+  { label:"Assign the rider", hint:"POST /api/deliveries/{id}/assign", run: async () => {
+      const r = await call("delivery","POST","/api/deliveries/{{deliveryId}}/assign",
+        {riderId: vars.riderId});
+      if(!r.ok) throw new Error("status "+r.status);
+      return "status " + r.data.status;
+  }},
+  { label:"Picked up", hint:"PUT /api/deliveries/{id}/status", run: async () => {
+      const r = await call("delivery","PUT","/api/deliveries/{{deliveryId}}/status",{status:"PICKED_UP"});
+      if(!r.ok) throw new Error("status "+r.status);
+      return "status " + r.data.status;
+  }},
+  { label:"Delivered", hint:"PUT /api/deliveries/{id}/status", run: async () => {
+      const r = await call("delivery","PUT","/api/deliveries/{{deliveryId}}/status",{status:"DELIVERED"});
+      if(!r.ok) throw new Error("status "+r.status);
+      return "status " + r.data.status;
+  }}
+];
+
+async function poll(fn, done, tries=20, gap=700){
+  let last;
+  for(let i=0;i<tries;i++){
+    try{ last = await fn(); if(done(last)) return last; }catch(e){ last = {ok:false, status:0}; }
+    await new Promise(r => setTimeout(r, gap));
+  }
+  throw new Error("timed out waiting for the event");
+}
+
+function renderSteps(){
+  const host = $("#wf-steps"); host.innerHTML = "";
+  WF.forEach((s,i) => {
+    const li = el("li","step"); li.dataset.state = "wait";
+    li.appendChild(el("span","idx", String(i+1).padStart(2,"0")));
+    const lab = el("div","label"); lab.appendChild(document.createTextNode(s.label));
+    const sm = el("small",null,s.hint); lab.appendChild(sm);
+    li.appendChild(lab);
+    li.appendChild(el("span","state","waiting"));
+    s._li = li; s._sm = sm;
+    host.appendChild(li);
+  });
+}
+
+$("#wf-run").onclick = async () => {
+  const btn = $("#wf-run"); btn.disabled = true; btn.textContent = "Running…";
+  renderSteps();
+  for(const s of WF){
+    s._li.dataset.state = "run";
+    s._li.querySelector(".state").textContent = s.async ? "waiting on queue" : "running";
+    try{
+      const detail = await s.run();
+      s._li.dataset.state = "ok";
+      s._li.querySelector(".state").textContent = "done";
+      if(detail) s._sm.textContent = s.hint + "  ·  " + detail;
+    }catch(e){
+      s._li.dataset.state = "fail";
+      s._li.querySelector(".state").textContent = "failed";
+      s._sm.textContent = s.hint + "  ·  " + e.message;
+      break;
+    }
+  }
+  btn.disabled = false; btn.textContent = "Run workflow";
+};
+
+$("#wf-open").onclick = () => $("#wf-panel").scrollIntoView({behavior:"smooth"});
+$("#clear-vars").onclick = () => { Object.keys(vars).forEach(k => vars[k]=""); renderVars(); };
+
+/* ============================ boot ============================ */
+
+renderRail(); renderVars(); renderSteps(); renderHealth({}); ping();
+SERVICES[1] && select(SERVICES[1].endpoints[0], SERVICES[1].endpoints[0]._btn);
+
+})();
+</script>
+</body>
+</html>
