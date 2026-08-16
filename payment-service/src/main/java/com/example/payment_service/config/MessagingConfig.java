@@ -1,6 +1,6 @@
-package com.example.order_service.config;
+package com.example.payment_service.config;
 
-import com.example.order_service.Constants;
+import com.example.payment_service.Constants;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Queue;
@@ -12,27 +12,32 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+/**
+ * Payment Service sits in the middle of the RabbitMQ chain, so it declares two topologies:
+ * the order topology it consumes from, and the payment topology it publishes to.
+ * Both sides declaring the same queue/exchange/binding is safe - declarations are idempotent.
+ */
 @Configuration
 public class MessagingConfig {
 
-    // ----- Outbound: Order Service -> Payment Service -----
+    // ----- Inbound: Order Service -> Payment Service -----
 
     @Bean
-    public Queue queue() {
-        return new Queue(Constants.QUEUE);
+    public Queue orderQueue() {
+        return new Queue(Constants.ORDER_QUEUE);
     }
 
     @Bean
-    public TopicExchange exchange() {
-        return new TopicExchange(Constants.EXCHANGE);
+    public TopicExchange orderExchange() {
+        return new TopicExchange(Constants.ORDER_EXCHANGE);
     }
 
     @Bean
-    public Binding binding(Queue queue, TopicExchange exchange) {
-        return BindingBuilder.bind(queue).to(exchange).with(Constants.ROUTING_KEY);
+    public Binding orderBinding(Queue orderQueue, TopicExchange orderExchange) {
+        return BindingBuilder.bind(orderQueue).to(orderExchange).with(Constants.ORDER_ROUTING_KEY);
     }
 
-    // ----- Inbound: Payment Service -> Order Service -----
+    // ----- Outbound: Payment Service -> Order Service -----
 
     @Bean
     public Queue paymentQueue() {
@@ -56,6 +61,11 @@ public class MessagingConfig {
         return new JacksonJsonMessageConverter();
     }
 
+    /**
+     * Declared as RabbitTemplate (not AmqpTemplate) so it can be injected by either type.
+     * Spring Boot also applies this single MessageConverter bean to the @RabbitListener
+     * container factory, which is what lets the listener receive a Map instead of raw bytes.
+     */
     @Bean
     public RabbitTemplate template(ConnectionFactory connectionFactory) {
         final RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);

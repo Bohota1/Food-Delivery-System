@@ -29,5 +29,11 @@ public class Order {
     private double price;
 
     @Field
-    private String status; // PLACED, CONFIRMED, DELIVERED
+    private String status; // PENDING_PAYMENT, CONFIRMED, PAYMENT_FAILED, DELIVERED
+
+    @Field
+    private String paymentId;
+
+    @Field
+    private String paymentStatus; // PENDING, SUCCESS, FAILED
 }
