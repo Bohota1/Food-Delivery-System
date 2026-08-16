@@ -1,0 +1,74 @@
+### Register a new customer
+POST http://localhost:8081/api/users/register
+Content-Type: application/json
+
+{
+  "fullName": "Jane Doe",
+  "email": "jane.doe@example.com",
+  "password": "SecurePass123",
+  "phone": "+8801712345678"
+}
+
+### Login
+POST http://localhost:8081/api/users/login
+Content-Type: application/json
+
+{
+  "email": "jane.doe@example.com",
+  "password": "SecurePass123"
+}
+
+### Get profile (replace TOKEN with the value returned from /login)
+GET http://localhost:8081/api/users/profile
+Authorization: Bearer TOKEN
+
+### Update profile
+PUT http://localhost:8081/api/users/profile
+Authorization: Bearer TOKEN
+Content-Type: application/json
+
+{
+  "fullName": "Jane A. Doe",
+  "phone": "+8801799999999"
+}
+
+### Add address
+POST http://localhost:8081/api/users/addresses
+Authorization: Bearer TOKEN
+Content-Type: application/json
+
+{
+  "label": "Home",
+  "street": "12 Green Road",
+  "city": "Dhaka",
+  "state": "Dhaka Division",
+  "zipCode": "1215",
+  "country": "Bangladesh",
+  "isDefault": true
+}
+
+### Get addresses
+GET http://localhost:8081/api/users/addresses
+Authorization: Bearer TOKEN
+
+### Update an address (replace ADDRESS_ID)
+PUT http://localhost:8081/api/users/addresses/ADDRESS_ID
+Authorization: Bearer TOKEN
+Content-Type: application/json
+
+{
+  "label": "Home",
+  "street": "12 Green Road, Apt 4B",
+  "city": "Dhaka",
+  "state": "Dhaka Division",
+  "zipCode": "1215",
+  "country": "Bangladesh",
+  "isDefault": true
+}
+
+### Delete an address (replace ADDRESS_ID)
+DELETE http://localhost:8081/api/users/addresses/ADDRESS_ID
+Authorization: Bearer TOKEN
+
+### Internal lookup (used by Order/Delivery services, replace USER_ID)
+GET http://localhost:8081/api/users/internal/USER_ID
