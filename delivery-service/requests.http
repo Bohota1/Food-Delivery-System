@@ -1,0 +1,74 @@
+### Register a rider
+POST http://localhost:8083/api/riders
+Content-Type: application/json
+
+{
+  "name": "Karim Ahmed",
+  "phone": "+8801812345678",
+  "vehicleType": "BIKE"
+}
+
+### List all riders
+GET http://localhost:8083/api/riders
+
+### List available riders
+GET http://localhost:8083/api/riders/available
+
+### Create a delivery (simulates an order-confirmed event via REST)
+POST http://localhost:8083/api/deliveries
+Content-Type: application/json
+
+{
+  "orderId": "order-1001",
+  "customerId": "REPLACE_WITH_A_USER_SERVICE_USER_ID",
+  "restaurantId": "restaurant-501",
+  "deliveryAddress": "12 Green Road, Dhaka",
+  "pickupAddress": "Restaurant XYZ, Gulshan, Dhaka"
+}
+
+### Assign a rider (auto-picks first available rider if body is empty)
+POST http://localhost:8083/api/deliveries/REPLACE_WITH_DELIVERY_ID/assign
+Content-Type: application/json
+
+{}
+
+### Assign a specific rider
+POST http://localhost:8083/api/deliveries/REPLACE_WITH_DELIVERY_ID/assign
+Content-Type: application/json
+
+{
+  "riderId": "REPLACE_WITH_RIDER_ID"
+}
+
+### Update status -> PICKED_UP
+PUT http://localhost:8083/api/deliveries/REPLACE_WITH_DELIVERY_ID/status
+Content-Type: application/json
+
+{
+  "status": "PICKED_UP"
+}
+
+### Update status -> DELIVERED
+PUT http://localhost:8083/api/deliveries/REPLACE_WITH_DELIVERY_ID/status
+Content-Type: application/json
+
+{
+  "status": "DELIVERED"
+}
+
+### Get delivery by id
+GET http://localhost:8083/api/deliveries/REPLACE_WITH_DELIVERY_ID
+
+### Get delivery by orderId (what Order Service / customers would call)
+GET http://localhost:8083/api/deliveries/order/order-1001
+
+### View deliveries assigned to a rider
+GET http://localhost:8083/api/deliveries/rider/REPLACE_WITH_RIDER_ID
+
+### Toggle rider availability off
+PATCH http://localhost:8083/api/riders/REPLACE_WITH_RIDER_ID/availability
+Content-Type: application/json
+
+{
+  "available": false
+}
