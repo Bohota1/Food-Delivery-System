@@ -15,4 +15,4 @@ Thumbs.db
 # Sensitive config files - never commit real credentials
 **/application.properties
 **/application-local.properties
-**/application-local.yml
+**/application-local.yml.claude/
