@@ -1,0 +1,37 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: delivery-service
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/delivery_db}
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        # Don't crash startup if RabbitMQ isn't running yet — keep retrying
+        # in the background. Useful while developing without a broker up.
+        missing-queues-fatal: false
+        retry:
+          enabled: true
+          initial-interval: 5000
+          max-attempts: 10
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URI:http://localhost:8761/eureka/}
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+
+logging:
+  level:
+    com.fooddelivery.deliveryservice: DEBUG
