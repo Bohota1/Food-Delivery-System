@@ -18,6 +18,12 @@ public class RabbitMQConfig {
     public static final String ORDER_CANCELLED_QUEUE = "order.cancelled.queue";
     public static final String ORDER_CANCELLED_ROUTING_KEY = "order.cancelled";
 
+    // Outbound: delivery progress published back to Order Service, so the order
+    // reaches DELIVERED without anyone calling Order Service directly.
+    public static final String DELIVERY_EXCHANGE = "delivery.exchange";
+    public static final String DELIVERY_STATUS_QUEUE = "delivery.status.queue";
+    public static final String DELIVERY_STATUS_ROUTING_KEY = "delivery.status";
+
     @Bean
     public TopicExchange orderExchange() {
         return new TopicExchange(ORDER_EXCHANGE);
@@ -41,6 +47,21 @@ public class RabbitMQConfig {
     @Bean
     public Binding orderCancelledBinding(Queue orderCancelledQueue, TopicExchange orderExchange) {
         return BindingBuilder.bind(orderCancelledQueue).to(orderExchange).with(ORDER_CANCELLED_ROUTING_KEY);
+    }
+
+    @Bean
+    public TopicExchange deliveryExchange() {
+        return new TopicExchange(DELIVERY_EXCHANGE);
+    }
+
+    @Bean
+    public Queue deliveryStatusQueue() {
+        return new Queue(DELIVERY_STATUS_QUEUE, true);
+    }
+
+    @Bean
+    public Binding deliveryStatusBinding(Queue deliveryStatusQueue, TopicExchange deliveryExchange) {
+        return BindingBuilder.bind(deliveryStatusQueue).to(deliveryExchange).with(DELIVERY_STATUS_ROUTING_KEY);
     }
 
     @Bean

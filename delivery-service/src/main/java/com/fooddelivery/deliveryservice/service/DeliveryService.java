@@ -1,5 +1,6 @@
 package com.fooddelivery.deliveryservice.service;
 
+import com.fooddelivery.deliveryservice.config.RabbitMQConfig;
 import com.fooddelivery.deliveryservice.dto.*;
 import com.fooddelivery.deliveryservice.exception.InvalidStateException;
 import com.fooddelivery.deliveryservice.exception.NoAvailableRiderException;
@@ -11,11 +12,14 @@ import com.fooddelivery.deliveryservice.repository.DeliveryRepository;
 import com.fooddelivery.deliveryservice.repository.RiderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.AmqpException;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +30,7 @@ public class DeliveryService {
 
     private final DeliveryRepository deliveryRepository;
     private final RiderRepository riderRepository;
+    private final RabbitTemplate rabbitTemplate;
 
     // Legal "manual" transitions via the status-update endpoint. ASSIGNED is
     // reached only through the dedicated assign-rider endpoint, not through
@@ -55,7 +60,9 @@ public class DeliveryService {
                 .status(DeliveryStatus.PENDING)
                 .build();
 
-        return toResponse(deliveryRepository.save(delivery));
+        Delivery saved = deliveryRepository.save(delivery);
+        publishStatus(saved);   // "delivery placed" - the first of the four delivery events
+        return toResponse(saved);
     }
 
     public DeliveryResponse assignRider(String deliveryId, AssignRiderRequest request) {
@@ -80,7 +87,34 @@ public class DeliveryService {
         delivery.setStatus(DeliveryStatus.ASSIGNED);
         delivery.setAssignedAt(LocalDateTime.now());
 
-        return toResponse(deliveryRepository.save(delivery));
+        Delivery saved = deliveryRepository.save(delivery);
+        publishStatus(saved);
+        return toResponse(saved);
+    }
+
+    /**
+     * Picks the first available rider for a delivery that was just created from an
+     * order.confirmed event. Having no rider free is a normal business state, not an
+     * error - the delivery simply stays PENDING until someone is assigned manually.
+     */
+    public void autoAssignRider(String deliveryId) {
+        try {
+            DeliveryResponse assigned = assignRider(deliveryId, new AssignRiderRequest());
+            log.info("Auto-assigned rider {} to delivery {}", assigned.getRiderId(), assigned.getId());
+        } catch (NoAvailableRiderException e) {
+            log.warn("Delivery {} stays PENDING: {}", deliveryId, e.getMessage());
+        }
+    }
+
+    /**
+     * Rider finished the job: delivery becomes DELIVERED and the rider is freed for
+     * the next order. Same state machine as the status endpoint, so a delivery that
+     * was never picked up cannot jump straight to delivered.
+     */
+    public DeliveryResponse complete(String deliveryId) {
+        UpdateStatusRequest request = new UpdateStatusRequest();
+        request.setStatus(DeliveryStatus.DELIVERED);
+        return updateStatus(deliveryId, request);
     }
 
     public DeliveryResponse updateStatus(String deliveryId, UpdateStatusRequest request) {
@@ -108,7 +142,31 @@ public class DeliveryService {
         }
 
         delivery.setStatus(next);
-        return toResponse(deliveryRepository.save(delivery));
+        Delivery saved = deliveryRepository.save(delivery);
+        publishStatus(saved);
+        return toResponse(saved);
+    }
+
+    /**
+     * Tells Order Service how the delivery is progressing, so the customer can see
+     * DELIVERED on the order itself without Delivery Service being called directly.
+     * The delivery is already saved, so a broker outage is logged, never rethrown.
+     */
+    private void publishStatus(Delivery delivery) {
+        Map<String, Object> event = new HashMap<>();
+        event.put("orderId", delivery.getOrderId());
+        event.put("deliveryId", delivery.getId());
+        event.put("riderId", delivery.getRiderId());
+        event.put("status", delivery.getStatus().name());
+
+        try {
+            rabbitTemplate.convertAndSend(RabbitMQConfig.DELIVERY_EXCHANGE,
+                    RabbitMQConfig.DELIVERY_STATUS_ROUTING_KEY, event);
+            log.info("Published delivery event [{}] for orderId={} — {}",
+                    delivery.getStatus(), delivery.getOrderId(), describe(delivery.getStatus()));
+        } catch (AmqpException e) {
+            log.warn("Could not publish delivery status for orderId={}: {}", delivery.getOrderId(), e.getMessage());
+        }
     }
 
     public DeliveryResponse getById(String deliveryId) {
@@ -132,6 +190,17 @@ public class DeliveryService {
             rider.setCurrentDeliveryId(null);
             riderRepository.save(rider);
         });
+    }
+
+    /** Plain-English label for each delivery event, so the console reads as a story. */
+    private String describe(DeliveryStatus status) {
+        return switch (status) {
+            case PENDING -> "delivery placed, waiting for a rider";
+            case ASSIGNED -> "handed to a rider";
+            case PICKED_UP -> "rider collected the food";
+            case DELIVERED -> "delivered successfully, rider free again";
+            case CANCELLED -> "delivery called off, rider free again";
+        };
     }
 
     private Delivery findOrThrow(String deliveryId) {

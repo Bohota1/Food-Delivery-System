@@ -51,6 +51,15 @@ public class Order {
     @Field
     private String paymentStatus; // PENDING, SUCCESS, FAILED
 
+    @Field
+    private String deliveryId;
+
+    @Field
+    private String deliveryStatus; // PENDING, ASSIGNED, PICKED_UP, DELIVERED, CANCELLED
+
+    @Field
+    private String riderId;
+
     // Needed by Delivery Service when the order is confirmed. Supplied by the
     // customer on the original order request.
     @Field

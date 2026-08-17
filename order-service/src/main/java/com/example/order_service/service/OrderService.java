@@ -91,6 +91,31 @@ public class OrderService {
         return orderRepository.save(order);
     }
 
+    /**
+     * Records delivery progress reported by Delivery Service. Only a completed delivery
+     * moves the order itself to DELIVERED; earlier stages leave the order CONFIRMED.
+     * A cancelled order keeps its own status regardless.
+     */
+    public Order applyDeliveryStatus(String orderId, String deliveryId, String riderId, String deliveryStatus) {
+        Order order = orderRepository.findOrderById(orderId);
+        if (order == null) {
+            System.out.println("No order found for id " + orderId + ", ignoring delivery status.");
+            return null;
+        }
+
+        order.setDeliveryId(deliveryId);
+        order.setDeliveryStatus(deliveryStatus);
+        if (riderId != null) {
+            order.setRiderId(riderId);
+        }
+
+        if (Constants.DELIVERED.equals(deliveryStatus) && !Constants.CANCELLED.equals(order.getStatus())) {
+            order.setStatus(Constants.DELIVERED);
+        }
+
+        return orderRepository.save(order);
+    }
+
     public Order findOrderById(String id) {
         return orderRepository.findOrderById(id);
     }

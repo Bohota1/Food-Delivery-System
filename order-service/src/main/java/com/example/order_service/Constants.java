@@ -24,6 +24,12 @@ public class Constants {
     public static final String ORDER_CANCELLED_QUEUE = "order.cancelled.queue";
     public static final String ORDER_CANCELLED_ROUTING_KEY = "order.cancelled";
 
+    // Inbound: delivery progress published by Delivery Service, which is how the order
+    // reaches DELIVERED. Must match Delivery Service's RabbitMQConfig exactly.
+    public static final String DELIVERY_EXCHANGE = "delivery.exchange";
+    public static final String DELIVERY_STATUS_QUEUE = "delivery.status.queue";
+    public static final String DELIVERY_STATUS_ROUTING_KEY = "delivery.status";
+
     // Outbound: refund requests consumed by Payment Service when a paid order is cancelled.
     public static final String REFUND_QUEUE = "refund_queue";
     public static final String REFUND_EXCHANGE = "refund_exchange";

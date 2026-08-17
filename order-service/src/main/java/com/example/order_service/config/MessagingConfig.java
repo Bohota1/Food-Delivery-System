@@ -100,6 +100,24 @@ public class MessagingConfig {
         return BindingBuilder.bind(refundQueue).to(refundExchange).with(Constants.REFUND_ROUTING_KEY);
     }
 
+    // ----- Inbound: Delivery Service -> Order Service -----
+
+    @Bean
+    public TopicExchange deliveryExchange() {
+        return new TopicExchange(Constants.DELIVERY_EXCHANGE);
+    }
+
+    @Bean
+    public Queue deliveryStatusQueue() {
+        return new Queue(Constants.DELIVERY_STATUS_QUEUE, true);
+    }
+
+    @Bean
+    public Binding deliveryStatusBinding(Queue deliveryStatusQueue, TopicExchange deliveryExchange) {
+        return BindingBuilder.bind(deliveryStatusQueue).to(deliveryExchange)
+                .with(Constants.DELIVERY_STATUS_ROUTING_KEY);
+    }
+
     // ----- Shared -----
 
     @Bean

@@ -5,6 +5,7 @@ import com.fooddelivery.userservice.exception.DuplicateEmailException;
 import com.fooddelivery.userservice.exception.InvalidCredentialsException;
 import com.fooddelivery.userservice.exception.ResourceNotFoundException;
 import com.fooddelivery.userservice.model.Address;
+import com.fooddelivery.userservice.model.Roles;
 import com.fooddelivery.userservice.model.User;
 import com.fooddelivery.userservice.repository.UserRepository;
 import com.fooddelivery.userservice.security.JwtUtil;
@@ -35,6 +36,7 @@ public class UserService {
                 .email(request.getEmail().toLowerCase())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .phone(request.getPhone())
+                .role(Roles.normalise(request.getRole()))
                 .active(true)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -52,7 +54,8 @@ public class UserService {
             throw new InvalidCredentialsException("Invalid email or password");
         }
 
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail());
+        String role = Roles.normalise(user.getRole());
+        String token = jwtUtil.generateToken(user.getId(), user.getEmail(), role);
 
         return LoginResponse.builder()
                 .token(token)
@@ -60,6 +63,7 @@ public class UserService {
                 .userId(user.getId())
                 .fullName(user.getFullName())
                 .email(user.getEmail())
+                .role(role)
                 .build();
     }
 
@@ -167,6 +171,7 @@ public class UserService {
                 .fullName(user.getFullName())
                 .email(user.getEmail())
                 .phone(user.getPhone())
+                .role(Roles.normalise(user.getRole()))
                 .addresses(user.getAddresses())
                 .createdAt(user.getCreatedAt())
                 .build();

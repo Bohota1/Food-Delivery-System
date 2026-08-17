@@ -33,6 +33,10 @@ public class User {
 
     private String phone;
 
+    /** CUSTOMER or ADMIN. Existing documents without this field are treated as CUSTOMER. */
+    @Builder.Default
+    private String role = Roles.CUSTOMER;
+
     @Builder.Default
     private List<Address> addresses = new ArrayList<>();
 

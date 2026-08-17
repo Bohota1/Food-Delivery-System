@@ -15,7 +15,9 @@ const store = {
   token: localStorage.getItem("fds.token") || "",
   cart: JSON.parse(localStorage.getItem("fds.cart") || "null") || { restaurant: null, lines: [] },
   view: "home",
-  cuisine: "All",
+  cuisine: "All",      // chip filter - asks Restaurant Service to do the filtering
+  cuisines: [],        // every cuisine seen on the unfiltered list, for the chips
+  q: "",               // free-text search, matched in the browser
   restaurants: [],
   current: null,
   orders: [],
@@ -67,7 +69,17 @@ async function api(path, { method = "GET", body, auth } = {}) {
   try { data = text ? JSON.parse(text) : null; } catch (_) { }
 
   if (!res.ok) {
-    const msg = (data && (data.message || data.error)) || ("Request failed (" + res.status + ")");
+    let msg = (data && (data.message || data.error)) || ("Request failed (" + res.status + ")");
+    // Bean Validation failures carry the useful detail in validationErrors
+    // ({ password: "Password must be at least 8 characters" }); without this the
+    // user only ever sees the generic "Validation failed".
+    const fieldErrors = data && data.validationErrors;
+    if (fieldErrors && typeof fieldErrors === "object") {
+      const detail = Object.keys(fieldErrors)
+        .map((field) => field + ": " + fieldErrors[field])
+        .join(", ");
+      if (detail) msg += " — " + detail;
+    }
     throw new Error(msg);
   }
   return data;
@@ -122,7 +134,8 @@ function go(view, arg) {
   paintChrome();
   window.scrollTo({ top: 0 });
   ({ home: viewHome, restaurant: viewRestaurant, orders: viewOrders,
-     checkout: viewCheckout, auth: viewAuth }[view] || viewHome)(arg);
+     checkout: viewCheckout, auth: viewAuth, admin: viewAdmin,
+     rider: viewRider }[view] || viewHome)(arg);
 }
 
 /* ---------------- home ---------------- */
@@ -132,38 +145,70 @@ async function viewHome() {
     <div class="view">
       <section class="hero">
         <div class="plate"></div>
-        <div class="eyebrow">Dhaka · delivering now</div>
         <h1>Good food, brought to your door.</h1>
-        <p>Browse kitchens near you, build your order, and follow it from the
-           restaurant to your doorstep in real time.</p>
       </section>
+      <div class="searchbar">
+        <input type="text" id="q" placeholder="Search a dish, cuisine or restaurant…"
+               value="${esc(store.q)}" autocomplete="off">
+      </div>
       <div class="filters" id="filters"></div>
       <div id="list"><p class="meta">Loading restaurants…</p></div>
     </div>`;
 
+  $("#q").oninput = e => { store.q = e.target.value; paintList(); };
+
+  await loadHome();
+}
+
+/**
+ * Cuisine filtering is done by Restaurant Service (GET /restaurants/search?cuisineType=),
+ * so the chips demonstrate a real API call rather than hiding rows in the browser.
+ * The free-text box then narrows whatever came back, including by dish name - something
+ * the backend has no endpoint for.
+ */
+async function loadHome() {
+  const filtered = store.cuisine && store.cuisine !== "All";
   try {
-    store.restaurants = await api("/restaurants/");
+    store.restaurants = await api(filtered
+      ? "/restaurants/search?cuisineType=" + encodeURIComponent(store.cuisine)
+      : "/restaurants/");
+    if (!filtered) {
+      store.cuisines = [...new Set(store.restaurants.map(r => r.cuisineType).filter(Boolean))].sort();
+    }
   } catch (e) {
     $("#list").innerHTML = `<div class="empty"><h2>Can't load restaurants</h2><p>${esc(e.message)}</p></div>`;
     return;
   }
-  paintFilters(); paintList();
+  paintFilters();
+  paintList();
 }
 
 function paintFilters() {
-  const cuisines = ["All", ...new Set(store.restaurants.map(r => r.cuisineType).filter(Boolean))];
-  $("#filters").innerHTML = cuisines.map(c =>
+  const box = $("#filters");
+  if (!box) return;
+  if (!store.cuisines.length) { box.innerHTML = ""; return; }
+  box.innerHTML = ["All", ...store.cuisines].map(c =>
     `<button class="chip ${c === store.cuisine ? "on" : ""}" data-cuisine="${esc(c)}">${esc(c)}</button>`).join("");
 }
 
+/** Matches the restaurant name, its cuisine, or any dish name/category on its menu. */
+function matchesQuery(r, q) {
+  if ((r.name || "").toLowerCase().includes(q)) return true;
+  if ((r.cuisineType || "").toLowerCase().includes(q)) return true;
+  return (r.menuItems || []).some(i =>
+    (i.name || "").toLowerCase().includes(q) || (i.category || "").toLowerCase().includes(q));
+}
+
 function paintList() {
-  const rows = store.cuisine === "All"
-    ? store.restaurants
-    : store.restaurants.filter(r => r.cuisineType === store.cuisine);
+  const q = store.q.trim().toLowerCase();
+  const rows = q ? store.restaurants.filter(r => matchesQuery(r, q)) : store.restaurants;
 
   if (!rows.length) {
-    $("#list").innerHTML = `<div class="empty"><h2>Nothing here yet</h2>
-      <p>No restaurants match. Add one from the developer console to get started.</p></div>`;
+    $("#list").innerHTML = q || store.cuisine !== "All"
+      ? `<div class="empty"><h2>Nothing matched</h2>
+           <p>No restaurant serves “${esc(store.q || store.cuisine)}”. Try another search.</p></div>`
+      : `<div class="empty"><h2>No restaurants yet</h2>
+           <p>Open the <b>Admin</b> tab to add your first restaurant and its menu.</p></div>`;
     return;
   }
 
@@ -437,16 +482,28 @@ async function refreshOrder(orderId) {
   } catch (e) { toast(e.message, true); }
 }
 
-/* A new order moves PENDING_PAYMENT -> CONFIRMED -> delivery created within a
-   second or two. Poll briefly so the customer sees it happen without refreshing. */
-function watchOrder(orderId, tries = 12) {
+/* A new order moves PENDING_PAYMENT -> CONFIRMED -> delivery created -> rider
+   assigned, all within a few seconds. Poll briefly so the customer sees it happen
+   without refreshing.
+
+   Delivery Service creates the delivery a moment before it assigns the rider, so
+   stopping as soon as a delivery exists leaves the card stuck on "awaiting rider".
+   Keep going until a rider is attached, or the order can't progress any further. */
+function watchOrder(orderId, tries = 15) {
   let n = 0;
   const tick = async () => {
     n++;
     await refreshOrder(orderId);
     const d = store.detail[orderId] || {};
-    const done = d.delivery || (store.orders.find(o => o.id === orderId) || {}).status === "PAYMENT_FAILED";
-    if (!done && n < tries) setTimeout(tick, 1200);
+    const order = store.orders.find(o => o.id === orderId) || {};
+    const delivery = d.delivery;
+
+    const settled =
+      (delivery && delivery.riderId) ||
+      (delivery && ["DELIVERED", "CANCELLED"].includes(delivery.status)) ||
+      ["PAYMENT_FAILED", "CANCELLED"].includes(order.status);
+
+    if (!settled && n < tries) setTimeout(tick, 1200);
   };
   setTimeout(tick, 900);
 }
@@ -541,6 +598,415 @@ function signOut() {
   toast("Signed out"); go("home");
 }
 
+/* ---------------- admin ----------------
+   Everything the system needs before a customer can order: restaurants, their
+   menus, and riders for Delivery Service to assign. All typed by hand - there is
+   no seed data. */
+
+const isAdmin = () => !!(store.user && store.user.role === "ADMIN");
+
+async function viewAdmin() {
+  // The tab stays visible so an admin can always reach the sign-in form, but
+  // the management screens only exist once the ADMIN role is proven.
+  if (!isAdmin()) return viewAdminAuth();
+
+  app().innerHTML = `
+    <div class="view narrow">
+      <h1 style="margin-bottom:4px">Admin</h1>
+      <p class="lede" style="margin-bottom:18px">
+        Signed in as <b>${esc(store.user.fullName)}</b> · Administrator
+      </p>
+
+      <div class="panel" style="margin-bottom:18px">
+        <div class="head-row">
+          <h3 style="margin:0">Restaurants</h3>
+          <button class="btn small" id="show-new-restaurant">+ Add restaurant</button>
+        </div>
+        <div id="new-restaurant" hidden style="margin-bottom:14px">
+          <div class="field"><label>Name</label><input id="r-name" placeholder="Pizza Palace"></div>
+          <div class="field"><label>Address</label><input id="r-address" placeholder="Dhanmondi, Dhaka"></div>
+          <div class="field"><label>Cuisine</label><input id="r-cuisine" placeholder="Italian"></div>
+          <div class="field"><label>Phone</label><input id="r-phone" placeholder="0171234567"></div>
+          <button class="btn block" id="do-restaurant">Create restaurant</button>
+        </div>
+        <div id="manage-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="head-row">
+          <h3 style="margin:0">Riders</h3>
+          <button class="btn small" id="show-new-rider">+ Register rider</button>
+        </div>
+        <p class="meta" style="margin:0 0 12px">
+          Delivery Service assigns one of these automatically when an order is confirmed.
+        </p>
+        <div id="new-rider" hidden style="margin-bottom:14px">
+          <div class="field"><label>Name</label><input id="d-name" placeholder="Karim Uddin"></div>
+          <div class="field"><label>Phone</label><input id="d-phone" placeholder="01712345678"></div>
+          <div class="field"><label>Vehicle</label><input id="d-vehicle" placeholder="Motorbike"></div>
+          <button class="btn block" id="do-rider">Register rider</button>
+        </div>
+        <div id="rider-list"></div>
+      </div>
+    </div>`;
+
+  $("#show-new-restaurant").onclick = () => { $("#new-restaurant").hidden = !$("#new-restaurant").hidden; };
+  $("#show-new-rider").onclick = () => { $("#new-rider").hidden = !$("#new-rider").hidden; };
+  $("#do-restaurant").onclick = createRestaurant;
+  $("#do-rider").onclick = registerRider;
+
+  await Promise.all([loadRestaurants(), loadRiders()]);
+}
+
+/** Admin sign-in / sign-up, shown in place of the admin screens until the role checks out. */
+function viewAdminAuth(mode) {
+  const signup = mode === "signup";
+  const signedInAsCustomer = store.user && !isAdmin();
+
+  app().innerHTML = `
+    <div class="view narrow">
+      <h1 style="margin-bottom:4px">${signup ? "Create admin account" : "Admin sign in"}</h1>
+      <p class="lede" style="margin-bottom:18px">
+        ${signedInAsCustomer
+          ? "You're signed in as a customer. Sign in with an administrator account to manage the system."
+          : "Restaurants, menus and riders are managed by an administrator."}
+      </p>
+      <div class="panel">
+        ${signup ? `
+          <div class="field"><label>Full name</label><input type="text" id="a-name" placeholder="Admin"></div>
+          <div class="field"><label>Phone</label><input type="text" id="a-phone" placeholder="017xxxxxxxx"></div>` : ""}
+        <div class="field"><label>Email</label><input type="email" id="a-email" placeholder="admin@fds.test"></div>
+        <div class="field"><label>Password</label><input type="password" id="a-pass" placeholder="••••••••"></div>
+        <button class="btn block" id="do-admin-auth">${signup ? "Create admin account" : "Sign in"}</button>
+        <p class="meta" style="text-align:center;margin:13px 0 0">
+          ${signup ? "Already an admin?" : "No admin account yet?"}
+          <a href="#" id="a-swap">${signup ? "Sign in" : "Create one"}</a>
+        </p>
+      </div>
+    </div>`;
+
+  $("#a-swap").onclick = e => { e.preventDefault(); viewAdminAuth(signup ? "signin" : "signup"); };
+  $("#do-admin-auth").onclick = () => (signup ? registerAdmin() : signInAdmin());
+}
+
+async function registerAdmin() {
+  const body = {
+    fullName: $("#a-name").value.trim(),
+    phone: $("#a-phone").value.trim(),
+    email: $("#a-email").value.trim(),
+    password: $("#a-pass").value,
+    role: "ADMIN"
+  };
+  if (!body.fullName || !body.email || !body.password) return toast("Name, email and password are required", true);
+  try {
+    await api("/api/users/register", { method: "POST", body });
+    toast("Admin account created — signing in");
+    await signInAdmin();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function signInAdmin() {
+  const email = $("#a-email").value.trim(), password = $("#a-pass").value;
+  if (!email || !password) return toast("Email and password are required", true);
+  try {
+    const res = await api("/api/users/login", { method: "POST", body: { email, password } });
+    if (res.role !== "ADMIN") return toast("That account is not an administrator", true);
+
+    store.token = res.token || "";
+    try {
+      store.user = await api("/api/users/profile", { auth: true });
+    } catch (_) {
+      store.user = { id: res.userId, fullName: res.fullName || email.split("@")[0], email, role: res.role };
+    }
+    save(); paintChrome();
+    toast("Signed in as administrator");
+    go("admin");
+  } catch (e) { toast(e.message, true); }
+}
+
+/** Single source of truth for the Admin tab: fetch once, repaint both sections. */
+async function loadRestaurants() {
+  try {
+    store.restaurants = await api("/restaurants/");
+  } catch (e) {
+    store.restaurants = [];
+    toast(e.message, true);
+  }
+  paintManage();
+}
+
+function paintManage() {
+  const box = $("#manage-list");
+  if (!box) return;
+
+  if (!store.restaurants.length) {
+    box.innerHTML = `<p class="meta">No restaurants yet — add one above.</p>`;
+    return;
+  }
+
+  box.innerHTML = store.restaurants.map(r => {
+    const items = r.menuItems || [];
+    return `
+      <div class="admin-block">
+        <div class="row">
+          <span><b>${esc(r.name)}</b>
+            <span class="meta">${esc(r.cuisineType || "")}${r.address ? " · " + esc(r.address) : ""}</span>
+          </span>
+          <span class="admin-actions">
+            <button class="btn small ${r.available ? "" : "line"}" data-rtoggle="${esc(r.id)}"
+                    title="Toggle open/closed">${r.available ? "Open" : "Closed"}</button>
+            <button class="btn small line" data-rmenu="${esc(r.id)}">Menu (${items.length})</button>
+            <button class="btn small danger" data-rdel="${esc(r.id)}">Delete</button>
+          </span>
+        </div>
+        <div class="menu-box" id="menu-${esc(r.id)}" hidden>
+          ${items.length ? items.map(i => `
+            <div class="row">
+              <input type="text" id="mi-name-${esc(i.id)}" value="${esc(i.name || "")}" style="flex:2">
+              <input type="number" id="mi-price-${esc(i.id)}" value="${i.price}" min="1" style="flex:1">
+              <span class="admin-actions">
+                <button class="btn small line" data-msave="${esc(r.id)}|${esc(i.id)}">Save</button>
+                <button class="btn small ${i.available ? "" : "line"}"
+                        data-mstock="${esc(r.id)}|${esc(i.id)}">${i.available ? "In stock" : "Out"}</button>
+                <button class="btn small danger" data-mdel="${esc(r.id)}|${esc(i.id)}">×</button>
+              </span>
+            </div>`).join("") : `<p class="meta">No menu items yet.</p>`}
+          <div class="row">
+            <input type="text" id="ni-name-${esc(r.id)}" placeholder="New dish" style="flex:2">
+            <input type="number" id="ni-price-${esc(r.id)}" placeholder="Price" min="1" style="flex:1">
+            <span class="admin-actions">
+              <button class="btn small" data-madd="${esc(r.id)}">Add dish</button>
+            </span>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+async function toggleRestaurant(id) {
+  const r = store.restaurants.find(x => x.id === id);
+  if (!r) return;
+  try {
+    await api(`/restaurants/${id}/availability?available=${!r.available}`, { method: "PATCH" });
+    toast(r.name + (r.available ? " closed" : " opened"));
+    await loadRestaurants();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function removeRestaurant(id) {
+  const r = store.restaurants.find(x => x.id === id);
+  if (!confirm(`Delete "${r ? r.name : id}" and its menu?`)) return;
+  try {
+    await api("/restaurants/" + id, { method: "DELETE" });
+    toast("Deleted");
+    await loadRestaurants();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function saveMenuItem(restaurantId, itemId) {
+  const r = store.restaurants.find(x => x.id === restaurantId);
+  const item = (r && (r.menuItems || []).find(i => i.id === itemId)) || {};
+  const body = {
+    name: $("#mi-name-" + itemId).value.trim(),
+    price: Number($("#mi-price-" + itemId).value),
+    category: item.category || "",
+    description: item.description || "",
+    available: item.available
+  };
+  if (!body.name || !(body.price > 0)) return toast("Name and a price above zero are required", true);
+  try {
+    await api(`/restaurants/${restaurantId}/menu/${itemId}`, { method: "PUT", body });
+    toast("Saved " + body.name);
+    await loadRestaurants();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function toggleStock(restaurantId, itemId) {
+  const r = store.restaurants.find(x => x.id === restaurantId);
+  const item = r && (r.menuItems || []).find(i => i.id === itemId);
+  if (!item) return;
+  try {
+    await api(`/restaurants/${restaurantId}/menu/${itemId}/availability?available=${!item.available}`,
+              { method: "PATCH" });
+    toast(item.name + (item.available ? " is out of stock" : " is back in stock"));
+    await loadRestaurants();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function removeMenuItem(restaurantId, itemId) {
+  if (!confirm("Remove this dish?")) return;
+  try {
+    await api(`/restaurants/${restaurantId}/menu/${itemId}`, { method: "DELETE" });
+    toast("Removed");
+    await loadRestaurants();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function loadRiders() {
+  const box = $("#rider-list");
+  if (!box) return;
+  try {
+    const riders = await api("/api/riders/available");
+    box.innerHTML = riders.length
+      ? `<div class="meta">Available riders</div>` + riders.map(r =>
+          `<div class="row"><span>${esc(r.name)} · ${esc(r.vehicleType || "")}</span>
+           <span class="pill open">Available</span></div>`).join("")
+      : `<p class="meta">No available riders yet.</p>`;
+  } catch (e) {
+    box.innerHTML = `<p class="meta">Can't reach Delivery Service — ${esc(e.message)}</p>`;
+  }
+}
+
+async function createRestaurant() {
+  const body = {
+    name: $("#r-name").value.trim(),
+    address: $("#r-address").value.trim(),
+    cuisineType: $("#r-cuisine").value.trim(),
+    phone: $("#r-phone").value.trim(),
+    available: true
+  };
+  if (!body.name) return toast("Restaurant name is required", true);
+  try {
+    const created = await api("/restaurants/", { method: "POST", body });
+    toast("Created " + created.name);
+    ["#r-name", "#r-address", "#r-cuisine", "#r-phone"].forEach(s => ($(s).value = ""));
+    await loadRestaurants();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function addMenuItem(restaurantId) {
+  const body = {
+    name: $("#ni-name-" + restaurantId).value.trim(),
+    price: Number($("#ni-price-" + restaurantId).value),
+    category: "",
+    available: true
+  };
+  if (!body.name || !(body.price > 0)) return toast("Dish name and a price above zero are required", true);
+  try {
+    await api("/restaurants/" + restaurantId + "/menu", { method: "POST", body });
+    toast("Added " + body.name);
+    await loadRestaurants();
+    const box = $("#menu-" + restaurantId);
+    if (box) box.hidden = false;   // keep the menu open so the new dish is visible
+  } catch (e) { toast(e.message, true); }
+}
+
+async function registerRider() {
+  const body = {
+    name: $("#d-name").value.trim(),
+    phone: $("#d-phone").value.trim(),
+    vehicleType: $("#d-vehicle").value.trim()
+  };
+  if (!body.name || !body.phone || !body.vehicleType) return toast("All rider fields are required", true);
+  try {
+    await api("/api/riders", { method: "POST", body });
+    toast("Registered " + body.name);
+    ["#d-name", "#d-phone", "#d-vehicle"].forEach(s => ($(s).value = ""));
+    await loadRiders();
+  } catch (e) { toast(e.message, true); }
+}
+
+/* ---------------- rider ----------------
+   A rider does not have an account - they exist in Delivery Service and are
+   registered by an Admin. This screen stands in for the rider's phone: pick who
+   you are, then work the deliveries assigned to you. */
+
+let riderId = "";
+
+async function viewRider() {
+  app().innerHTML = `
+    <div class="view narrow">
+      <h1 style="margin-bottom:4px">Rider</h1>
+      <p class="lede" style="margin-bottom:18px">
+        Deliveries are assigned to you automatically when an order is paid for.
+      </p>
+      <div class="panel">
+        <div class="field"><label>You are</label><select id="rider-pick"></select></div>
+        <div id="rider-jobs"><p class="meta">Loading…</p></div>
+      </div>
+    </div>`;
+
+  const select = $("#rider-pick");
+  let riders = [];
+  try {
+    riders = await api("/api/riders");
+  } catch (e) {
+    select.innerHTML = `<option value="">Can't reach Delivery Service</option>`;
+    $("#rider-jobs").innerHTML = `<p class="meta">${esc(e.message)}</p>`;
+    return;
+  }
+
+  if (!riders.length) {
+    select.innerHTML = `<option value="">No riders yet</option>`;
+    $("#rider-jobs").innerHTML = `<p class="meta">Register a rider from the Admin tab first.</p>`;
+    return;
+  }
+
+  select.innerHTML = riders.map(r =>
+    `<option value="${esc(r.id)}">${esc(r.name)} · ${r.available ? "available" : "on a delivery"}</option>`).join("");
+  if (!riderId || !riders.some(r => r.id === riderId)) riderId = riders[0].id;
+  select.value = riderId;
+  select.onchange = () => { riderId = select.value; loadRiderJobs(); };
+
+  await loadRiderJobs();
+}
+
+async function loadRiderJobs() {
+  const box = $("#rider-jobs");
+  if (!box || !riderId) return;
+
+  let jobs = [];
+  try {
+    jobs = await api("/api/deliveries/rider/" + riderId);
+  } catch (e) {
+    box.innerHTML = `<p class="meta">${esc(e.message)}</p>`;
+    return;
+  }
+
+  const done = j => j.status === "DELIVERED" || j.status === "CANCELLED";
+  const live = jobs.filter(j => !done(j));
+  const past = jobs.filter(done);
+
+  box.innerHTML =
+    (live.length ? live.map(j => `
+      <div class="admin-block">
+        <div class="row">
+          <span><b>Order #${esc(String(j.orderId || "").slice(-6))}</b>
+            <span class="meta">${esc(j.deliveryAddress || "")}</span></span>
+          <span class="pill ${j.status === "PICKED_UP" ? "wait" : "flat"}">${esc(j.status)}</span>
+        </div>
+        <div class="row">
+          <span class="meta">${j.status === "ASSIGNED"
+            ? "Collect the food from the restaurant."
+            : "On the way to the customer."}</span>
+          <span class="admin-actions">
+            ${j.status === "ASSIGNED"
+              ? `<button class="btn small" data-dpick="${esc(j.id)}">Picked up</button>` : ""}
+            ${j.status === "PICKED_UP"
+              ? `<button class="btn small" data-ddone="${esc(j.id)}">Complete delivery</button>` : ""}
+          </span>
+        </div>
+      </div>`).join("")
+      : `<p class="meta">Nothing assigned right now. Place an order as a customer and it lands here.</p>`)
+    + (past.length ? `<p class="meta" style="margin-top:14px">${past.length} completed earlier.</p>` : "");
+}
+
+async function riderPickUp(deliveryId) {
+  try {
+    await api("/api/deliveries/" + deliveryId + "/status", { method: "PUT", body: { status: "PICKED_UP" } });
+    toast("Picked up — on your way");
+    await loadRiderJobs();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function riderComplete(deliveryId) {
+  try {
+    await api("/api/deliveries/" + deliveryId + "/complete", { method: "POST" });
+    toast("Delivered — you're available again");
+    await viewRider();   // repaint the picker too, the rider is free now
+  } catch (e) { toast(e.message, true); }
+}
+
 /* ---------------- events ---------------- */
 
 document.addEventListener("click", e => {
@@ -548,7 +1014,6 @@ document.addEventListener("click", e => {
   const hit = sel => t.closest(sel);
 
   if (hit("[data-go]")) { go(hit("[data-go]").dataset.go); return; }
-  if (hit("[data-cuisine]")) { store.cuisine = hit("[data-cuisine]").dataset.cuisine; paintFilters(); paintList(); return; }
   if (hit("[data-open]")) { go("restaurant", hit("[data-open]").dataset.open); return; }
   if (hit("[data-add]")) {
     const id = hit("[data-add]").dataset.add;
@@ -560,6 +1025,20 @@ document.addEventListener("click", e => {
   if (hit("[data-qty]")) { const b = hit("[data-qty]"); setQty(b.dataset.qty, Number(b.dataset.d)); return; }
   if (t.id === "to-checkout") { closeCart(); go("checkout"); return; }
   if (t.id === "place") { placeOrder(); return; }
+  if (hit("[data-rtoggle]")) { toggleRestaurant(hit("[data-rtoggle]").dataset.rtoggle); return; }
+  if (hit("[data-rdel]")) { removeRestaurant(hit("[data-rdel]").dataset.rdel); return; }
+  if (hit("[data-rmenu]")) {
+    const box = $("#menu-" + hit("[data-rmenu]").dataset.rmenu);
+    if (box) box.hidden = !box.hidden;
+    return;
+  }
+  if (hit("[data-cuisine]")) { store.cuisine = hit("[data-cuisine]").dataset.cuisine; loadHome(); return; }
+  if (hit("[data-dpick]")) { riderPickUp(hit("[data-dpick]").dataset.dpick); return; }
+  if (hit("[data-ddone]")) { riderComplete(hit("[data-ddone]").dataset.ddone); return; }
+  if (hit("[data-madd]")) { addMenuItem(hit("[data-madd]").dataset.madd); return; }
+  if (hit("[data-msave]")) { const [r, i] = hit("[data-msave]").dataset.msave.split("|"); saveMenuItem(r, i); return; }
+  if (hit("[data-mstock]")) { const [r, i] = hit("[data-mstock]").dataset.mstock.split("|"); toggleStock(r, i); return; }
+  if (hit("[data-mdel]")) { const [r, i] = hit("[data-mdel]").dataset.mdel.split("|"); removeMenuItem(r, i); return; }
   if (hit("[data-refresh]")) { refreshOrder(hit("[data-refresh]").dataset.refresh); return; }
   if (hit("[data-cancel]")) { cancelOrder(hit("[data-cancel]").dataset.cancel); return; }
   if (hit("[data-refund]")) { requestRefund(hit("[data-refund]").dataset.refund); return; }

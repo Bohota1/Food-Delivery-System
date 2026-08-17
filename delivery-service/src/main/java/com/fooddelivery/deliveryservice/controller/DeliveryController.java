@@ -41,6 +41,12 @@ public class DeliveryController {
         return ResponseEntity.ok(deliveryService.updateStatus(deliveryId, request));
     }
 
+    /** Rider completed the delivery: marks it DELIVERED and frees the rider. */
+    @PostMapping("/{deliveryId}/complete")
+    public ResponseEntity<DeliveryResponse> complete(@PathVariable String deliveryId) {
+        return ResponseEntity.ok(deliveryService.complete(deliveryId));
+    }
+
     @GetMapping("/{deliveryId}")
     public ResponseEntity<DeliveryResponse> getById(@PathVariable String deliveryId) {
         return ResponseEntity.ok(deliveryService.getById(deliveryId));

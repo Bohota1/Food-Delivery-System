@@ -135,18 +135,22 @@ Then open **http://localhost:5173** — browse restaurants, build a cart, sign i
 order and watch it move through payment and delivery. A developer API console for testing
 every endpoint directly lives at **http://localhost:5173/console.html**.
 
-### Demo data
+### Setting up data
 
-With all services running, populate the system for manual testing:
+There is no seed script — everything is entered by hand. With all services running, open
+the **Admin** tab and work down it:
 
-```bash
-node scripts/seed-demo-data.js
-```
+1. **Add a restaurant** — name, address, cuisine, phone.
+2. **Add a menu item** — pick the restaurant, then name, price, category.
+3. **Register a rider** — name, phone, vehicle. At least one rider must exist before an
+   order is placed, otherwise the delivery is created but stays `PENDING` with no rider.
 
-That creates 5 restaurants with menus (one closed, one dish out of stock), 3 riders, and
-3 sample orders in different states — delivered, cancelled + refunded, and one in progress.
+Below the forms, **Manage restaurants & menus** lists everything already created. From
+there an Admin can open/close a restaurant, delete it, rename a dish or change its price,
+mark a dish out of stock, and remove dishes. Closing a restaurant or marking a dish out of
+stock is visible to the customer straight away.
 
-Sign in with **demo@fds.test** / **demo1234**.
+Then use the customer side normally: register, browse, add to cart, checkout.
 
 The website only ever calls the API Gateway on :8080, never a service port. The gateway
 therefore has CORS enabled — browsers preflight JSON requests, which Postman never does.
@@ -156,12 +160,19 @@ therefore has CORS enabled — browsers preflight JSON requests, which Postman n
 ```
 Order placed    ──order_exchange / order_routingKey──────►  Payment Service
 Payment done    ──payment_exchange / payment_routingKey──►  Order Service    (order CONFIRMED)
-Order CONFIRMED ──order.exchange / order.confirmed───────►  Delivery Service (delivery created)
+Order CONFIRMED ──order.exchange / order.confirmed───────►  Delivery Service (delivery created,
+                                                                              rider auto-assigned)
+Delivery moves  ──delivery.exchange / delivery.status────►  Order Service    (order DELIVERED
+                                                                              once completed)
 
 Order cancelled ──refund_exchange / refund_routingKey────►  Payment Service  (payment REFUNDED)
 Order cancelled ──order.exchange / order.cancelled───────►  Delivery Service (delivery cancelled,
                                                                               rider freed)
 ```
+
+Rider assignment is owned by Delivery Service: consuming `order.confirmed` creates the
+delivery **and** assigns the first available rider, so no external call is needed. If no
+rider is free the delivery stays `PENDING` and can be assigned manually later.
 
 Exchange and routing-key names must match exactly on both sides. They are defined in
 each service's `Constants.java` (or `RabbitMQConfig.java` for delivery-service).
@@ -180,9 +191,11 @@ each service's `Constants.java` (or `RabbitMQConfig.java` for delivery-service).
 | **Cancel order** | `POST /orders/{id}/cancel` — refunds if paid, cancels the delivery |
 | Make payment | asynchronous, via `order_queue` |
 | **Request refund** | `POST /payments/order/{orderId}/refund` |
-| Assign rider | `POST /api/deliveries/{id}/assign` |
-| Update delivery status | `PUT /api/deliveries/{id}/status` |
+| **Assign rider** | automatic, on the `order.confirmed` event — `POST /api/deliveries/{id}/assign` only for manual override |
+| Update delivery status | `PUT /api/deliveries/{id}/status` — `PICKED_UP` |
+| **Complete delivery** | `POST /api/deliveries/{id}/complete` — marks DELIVERED and frees the rider |
 | View assigned deliveries | `GET /api/deliveries/rider/{riderId}` |
+| Register rider | `POST /api/riders` |
 
 ## Setup for teammates
 1. Clone this repo.

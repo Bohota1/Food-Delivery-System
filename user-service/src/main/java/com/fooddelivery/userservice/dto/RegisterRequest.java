@@ -23,4 +23,7 @@ public class RegisterRequest {
     @NotBlank(message = "Phone number is required")
     @Pattern(regexp = "^\\+?[0-9]{7,15}$", message = "Phone number must be valid")
     private String phone;
+
+    /** Optional: "ADMIN" to create an admin account. Anything else registers a customer. */
+    private String role;
 }
