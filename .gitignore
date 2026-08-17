@@ -16,3 +16,6 @@ Thumbs.db
 **/application.properties
 **/application-local.properties
 **/application-local.yml
+
+# Editor / tooling
+.claude/
